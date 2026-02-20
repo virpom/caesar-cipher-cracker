@@ -1,0 +1,21 @@
+# Словари (скачиваются через download_dicts.sh)
+russian_dict.txt
+english_dict.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
