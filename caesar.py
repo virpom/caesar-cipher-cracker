@@ -439,6 +439,16 @@ class Analyzer:
         en = sum(1 for c in text.lower() if c in EN_SET)
         return 'ru' if ru > en else 'en'
 
+    def is_bilingual(self, text: str) -> bool:
+        """Есть ли в тексте оба языка (значимо)"""
+        ru = sum(1 for c in text.lower() if c in RU_SET)
+        en = sum(1 for c in text.lower() if c in EN_SET)
+        total = ru + en
+        if total == 0:
+            return False
+        minor = min(ru, en)
+        return minor / total > 0.05  # >5% минорного языка
+
     def _letter_count(self, text: str, lang: str = 'ru') -> int:
         charset = RU_SET if lang == 'ru' else EN_SET
         return sum(1 for c in text if c.lower() in charset)
@@ -526,6 +536,73 @@ class Analyzer:
             return ic > ic_threshold and ds > 0.4
 
         return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# РАЗБИЕНИЕ ПО ЯЗЫКАМ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class LangSegment:
+    """Сегмент текста на одном языке"""
+    text: str
+    lang: str
+    start: int
+    end: int
+
+
+def split_by_language(text: str) -> List[LangSegment]:
+    """
+    Разбивает текст на сегменты по языку.
+    Нейтральные символы (пробелы, знаки препинания, цифры) приклеиваются к текущему языку.
+    """
+    if not text:
+        return []
+
+    segments: List[LangSegment] = []
+    cur_lang = None
+    cur_start = 0
+
+    for i, ch in enumerate(text):
+        cl = ch.lower()
+        if cl in RU_SET:
+            det = 'ru'
+        elif cl in EN_SET:
+            det = 'en'
+        else:
+            continue  # нейтральный символ
+
+        if cur_lang is None:
+            cur_lang = det
+        elif det != cur_lang:
+            # Смена языка — отрезаем на границе слова
+            # Ищем последний пробел/\n перед i
+            split_at = i
+            for j in range(i - 1, max(i - 10, cur_start - 1), -1):
+                if text[j] in ' \n\t':
+                    split_at = j + 1
+                    break
+            if split_at > cur_start:
+                segments.append(LangSegment(
+                    text=text[cur_start:split_at],
+                    lang=cur_lang,
+                    start=cur_start,
+                    end=split_at,
+                ))
+            cur_start = split_at
+            cur_lang = det
+
+    # Последний сегмент
+    if cur_start < len(text) and cur_lang:
+        segments.append(LangSegment(
+            text=text[cur_start:],
+            lang=cur_lang,
+            start=cur_start,
+            end=len(text),
+        ))
+
+    return segments if segments else [LangSegment(text=text, lang='ru', start=0, end=len(text))]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -906,9 +983,65 @@ def run():
     if not text or text.lower() in ('exit', 'quit', 'q'):
         return
 
-    lang = args.lang or analyzer.detect_language(text)
+    forced_lang = args.lang
+    bilingual = (not forced_lang) and analyzer.is_bilingual(text)
 
-    # --- RAW MODE: только текст ---
+    # UI для не-raw режима
+    if not raw:
+        if auto:
+            ui = UI()
+            ui.header()
+
+    if bilingual:
+        _crack_bilingual(text, analyzer, detector, args, raw, ui if not raw else None)
+    else:
+        lang = forced_lang or analyzer.detect_language(text)
+        _crack_single_lang(text, lang, analyzer, detector, args, raw, ui if not raw else None, auto)
+
+
+def _crack_bilingual(text, analyzer, detector, args, raw, ui):
+    """Разбиваем по языкам, дешифруем каждый сегмент своим алфавитом"""
+    lang_segments = split_by_language(text)
+    parts = []
+
+    for lseg in lang_segments:
+        results = analyzer.crack(lseg.text, lseg.lang)
+        best = results[0]
+        parts.append((lseg, best))
+
+    full_text = ''.join(best.text for _, best in parts)
+
+    if raw:
+        print(full_text)
+        return
+
+    langs = set(ls.lang for ls in lang_segments)
+    lang_name = "Russian + English" if len(langs) > 1 else ("Русский" if 'ru' in langs else "English")
+    ui.info(len(analyzer.dict), False, lang_name)
+
+    if ui.c:
+        ui.c.print()
+        ui.c.print("[bold green]💬 РАСШИФРОВАННЫЙ ТЕКСТ:[/bold green]")
+        ui.c.print()
+        ui.c.print(full_text)
+        ui.c.print()
+        for lseg, best in parts:
+            lang_tag = "RU" if lseg.lang == 'ru' else "EN"
+            ui.c.print(
+                f"[dim][{lang_tag}] ключ={best.shift}  "
+                f"{ui._conf_colored(best.confidence)}  "
+                f"{best.matches}/{best.total_words} слов[/dim]"
+            )
+    else:
+        print(f"\n💬 РАСШИФРОВАННЫЙ ТЕКСТ:")
+        print(full_text)
+        for lseg, best in parts:
+            lang_tag = "RU" if lseg.lang == 'ru' else "EN"
+            print(f"  [{lang_tag}] ключ={best.shift} ({best.confidence:.0f}%) {best.matches}/{best.total_words} слов")
+
+
+def _crack_single_lang(text, lang, analyzer, detector, args, raw, ui, auto=True):
+    """Дешифровка одноязычного текста"""
     if raw:
         results = analyzer.crack(text, lang)
         best = results[0]
@@ -920,11 +1053,6 @@ def run():
                 return
         print(best.text)
         return
-
-    # --- FULL UI MODE ---
-    if auto:
-        ui = UI()
-        ui.header()
 
     lang_name = "Русский" if lang == 'ru' else "English"
     is_plain = analyzer.is_already_plaintext(text)
@@ -943,11 +1071,9 @@ def run():
     results = analyzer.crack(text, lang)
     best = results[0]
 
-    # Автоматически проверяем смешанный шифр если уверенность низкая
     if (args.mixed or (best.confidence < 60 and len(text) > 60)):
         segments = detector.detect(text)
         keys = set(s.best_result.shift for s in segments)
-
         if len(keys) > 1:
             ui.result_mixed(segments)
             return
