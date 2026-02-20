@@ -943,28 +943,16 @@ def run():
     results = analyzer.crack(text, lang)
     best = results[0]
 
-    use_mixed = args.mixed
-    if not use_mixed and best.confidence < 60 and len(text) > 60:
-        if auto:
-            use_mixed = True
-        else:
-            use_mixed = ui.confirm(
-                f"Достоверность низкая ({best.confidence:.0f}%). Проверить смешанный шифр?"
-            )
-
-    if not use_mixed and not auto:
-        use_mixed = ui.confirm("Проверить смешанный шифр (разные ключи)?")
-
-    if use_mixed:
+    # Автоматически проверяем смешанный шифр если уверенность низкая
+    if (args.mixed or (best.confidence < 60 and len(text) > 60)):
         segments = detector.detect(text)
         keys = set(s.best_result.shift for s in segments)
 
         if len(keys) > 1:
             ui.result_mixed(segments)
-        else:
-            ui.result_single(best, results[:5])
-    else:
-        ui.result_single(best, results[:5])
+            return
+
+    ui.result_single(best, results[:5])
 
 
 if __name__ == '__main__':
