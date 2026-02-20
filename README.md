@@ -16,16 +16,14 @@
 ## Установка
 
 ```bash
-git clone https://github.com/<your-username>/caesar-cipher-cracker.git
+git clone https://github.com/virpom/caesar-cipher-cracker.git
 cd caesar-cipher-cracker
-
-# Скачать словари (~90MB суммарно)
-chmod +x download_dicts.sh
-./download_dicts.sh
-
-# Опционально: Rich TUI
-pip install rich
+python3 caesar.py "зашифрованный текст"
 ```
+
+Словари уже в репозитории — ничего дополнительно скачивать не нужно.
+
+Опционально: `pip install rich` для красивого TUI (работает и без него).
 
 ## Использование
 

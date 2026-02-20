@@ -148,6 +148,9 @@ class Segment:
 # СЛОВАРЬ
 # ═══════════════════════════════════════════════════════════════════════════════
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+
+
 class Dictionary:
     """Синглтон-словарь с ленивой загрузкой (русский + английский)"""
     _inst = None
@@ -174,23 +177,27 @@ class Dictionary:
     def words(self, lang: str) -> Set[str]:
         return self.ru_words if lang == 'ru' else self.en_words
 
-    def _load_file(self, path: str) -> Set[str]:
+    @staticmethod
+    def _find(name: str) -> Optional[Path]:
+        """1. Рядом со скриптом  2. CWD  3. HOME"""
+        for p in [_SCRIPT_DIR / name, Path(name), Path.home() / name]:
+            if p.exists() and p.stat().st_size > 100:
+                return p
+        return None
+
+    def _load_file(self, path: Path) -> Set[str]:
         try:
             with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                 return {
                     w.lower() for line in f
                     if (w := line.strip()) and 2 <= len(w) <= 50 and w.isalpha()
                 }
-        except:
+        except Exception:
             return set()
 
     def _load_ru(self):
-        for p in [Path('russian_dict.txt'), Path.home() / 'russian_dict.txt']:
-            if p.exists() and p.stat().st_size > 100:
-                self._ru_words = self._load_file(str(p))
-                break
-        else:
-            self._ru_words = set()
+        p = self._find('russian_dict.txt')
+        self._ru_words = self._load_file(p) if p else set()
         self._ru_words |= {
             'и', 'в', 'не', 'на', 'он', 'что', 'как', 'а', 'то', 'все',
             'она', 'так', 'его', 'но', 'да', 'ты', 'же', 'вы', 'за', 'бы',
@@ -198,12 +205,8 @@ class Dictionary:
         }
 
     def _load_en(self):
-        for p in [Path('english_dict.txt'), Path.home() / 'english_dict.txt']:
-            if p.exists() and p.stat().st_size > 100:
-                self._en_words = self._load_file(str(p))
-                break
-        else:
-            self._en_words = set()
+        p = self._find('english_dict.txt')
+        self._en_words = self._load_file(p) if p else set()
         self._en_words |= {
             'the', 'be', 'to', 'of', 'and', 'in', 'that', 'have', 'it', 'for',
             'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but',
