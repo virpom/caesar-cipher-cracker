@@ -726,26 +726,23 @@ class UI:
 
     def result_single(self, best: ShiftResult, top5: List[ShiftResult]):
         if self.c:
-            # Основной результат
-            self.c.print(Panel(
-                f"[bold white]{best.text}[/bold white]",
-                title="[bold green]💬 РАСШИФРОВАННЫЙ ТЕКСТ[/bold green]",
-                border_style="green", box=box.DOUBLE
-            ))
+            # Основной результат — без рамки, легко копировать
+            self.c.print()
+            self.c.print("[bold green]💬 РАСШИФРОВАННЫЙ ТЕКСТ:[/bold green]")
+            self.c.print()
+            self.c.print(best.text)
             self.c.print()
 
             # Метрики
-            tbl = Table(box=box.ROUNDED, show_header=True, header_style="bold magenta")
-            tbl.add_column("Метрика", style="cyan")
-            tbl.add_column("Значение", style="white")
-            tbl.add_row("🔑 Ключ", f"[bold yellow]{best.shift}[/bold yellow]")
-            tbl.add_row("📊 Достоверность", self._conf_colored(best.confidence))
-            tbl.add_row("📖 Слов найдено", f"{best.matches}/{best.total_words}")
-            tbl.add_row("📈 Chi²", f"{best.chi_sq:.1f}")
-            tbl.add_row("🔤 Биграммы", f"{best.bigram_score:.1%}")
-            tbl.add_row("📚 Словарь", f"{best.dict_score:.1%}")
-            tbl.add_row("✂️  Стемминг", f"{best.stem_score:.1%}")
-            self.c.print(tbl)
+            self.c.print(
+                f"[dim]🔑 Ключ: [bold yellow]{best.shift}[/bold yellow]  "
+                f"📊 {self._conf_colored(best.confidence)}  "
+                f"📖 {best.matches}/{best.total_words} слов  "
+                f"Chi²={best.chi_sq:.0f}  "
+                f"Бигр.: {best.bigram_score:.0%}  "
+                f"Слов.: {best.dict_score:.0%}  "
+                f"Стем.: {best.stem_score:.0%}[/dim]"
+            )
             self.c.print()
 
             # Топ-5
@@ -765,14 +762,12 @@ class UI:
 
             self.c.print(t5)
         else:
-            print(f"\n{'='*70}")
-            print(f"🔑 Ключ: {best.shift}")
-            print(f"📊 Достоверность: {best.confidence:.1f}%")
-            print(f"📖 Совпадений: {best.matches}/{best.total_words}")
-            print(f"Chi²={best.chi_sq:.1f}  Биграммы={best.bigram_score:.1%}  "
-                  f"Словарь={best.dict_score:.1%}  Стемминг={best.stem_score:.1%}")
-            print(f"\n💬 {best.text}")
-            print(f"{'='*70}")
+            print(f"\n💬 РАСШИФРОВАННЫЙ ТЕКСТ:")
+            print(best.text)
+            print(f"\n🔑 Ключ: {best.shift}  Достоверность: {best.confidence:.1f}%  "
+                  f"Слов: {best.matches}/{best.total_words}")
+            print(f"Chi²={best.chi_sq:.1f}  Бигр.={best.bigram_score:.0%}  "
+                  f"Слов.={best.dict_score:.0%}  Стем.={best.stem_score:.0%}")
             print("\nАльтернативы:")
             for i, r in enumerate(top5, 1):
                 m = "⭐" if i == 1 else f"{i}."
@@ -818,11 +813,9 @@ class UI:
             self.c.print(tbl)
             self.c.print()
 
-            self.c.print(Panel(
-                f"[bold white]{full_text}[/bold white]",
-                title=f"[bold green]💬 ПОЛНЫЙ ТЕКСТ ({avg_conf:.0f}%)[/bold green]",
-                border_style="green", box=box.DOUBLE
-            ))
+            self.c.print("[bold green]💬 ПОЛНЫЙ ТЕКСТ:[/bold green]")
+            self.c.print()
+            self.c.print(full_text)
             self.c.print()
         else:
             if is_mixed:
@@ -842,10 +835,25 @@ class UI:
         else:
             return f"[red]{conf:.1f}%[/red]"
 
-    def ask(self, prompt: str) -> str:
+    def ask_multiline(self, prompt: str) -> str:
+        """Многострочный ввод: пустая строка или Ctrl+D завершает"""
         if self.c:
-            return Prompt.ask(f"[bold yellow]{prompt}[/bold yellow]")
-        return input(f"{prompt}: ")
+            self.c.print(f"[bold yellow]{prompt}[/bold yellow]")
+            self.c.print("[dim](пустая строка = конец ввода)[/dim]")
+        else:
+            print(f"{prompt}")
+            print("(пустая строка = конец ввода)")
+
+        lines = []
+        try:
+            while True:
+                line = input()
+                if line == '':
+                    break
+                lines.append(line)
+        except EOFError:
+            pass
+        return '\n'.join(lines)
 
     def confirm(self, question: str) -> bool:
         if self.c:
@@ -892,7 +900,7 @@ def run():
             sys.exit(1)
         ui = UI()
         ui.header()
-        text = ui.ask("Введите зашифрованный текст")
+        text = ui.ask_multiline("Введите зашифрованный текст:")
         auto = False
 
     if not text or text.lower() in ('exit', 'quit', 'q'):
